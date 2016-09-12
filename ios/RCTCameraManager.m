@@ -787,53 +787,92 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
      @"size":[NSNumber numberWithLongLong:captureOutput.recordedFileSize],
   }];
 
-  if (self.videoTarget == RCTCameraCaptureTargetCameraRoll) {
-    ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
-    if ([library videoAtPathIsCompatibleWithSavedPhotosAlbum:outputFileURL]) {
-      [library writeVideoAtPathToSavedPhotosAlbum:outputFileURL
-                                  completionBlock:^(NSURL *assetURL, NSError *error) {
-                                    if (error) {
-                                      self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
-                                      return;
-                                    }
-                                    [videoInfo setObject:[assetURL absoluteString] forKey:@"path"];
-                                    self.videoResolve(videoInfo);
-                                  }];
-    }
+  // HACK: Convert the MOV file to an MP4 file
+  NSArray *compatiblePresets = [AVAssetExportSession exportPresetsCompatibleWithAsset:videoAsAsset];
+
+  if ([compatiblePresets containsObject:AVAssetExportPresetLowQuality])
+  {
+      AVAssetExportSession *exportSession = [[AVAssetExportSession alloc]initWithAsset:videoAsAsset presetName:AVAssetExportPresetPassthrough];
+      NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+      NSString *videoPath = [[outputFileURL path] stringByAppendingString:@".mp4"];
+
+      exportSession.outputURL = [NSURL fileURLWithPath:videoPath];
+      NSLog(@"videopath of your mp4 file = %@", videoPath);  // PATH OF YOUR .mp4 FILE
+      exportSession.outputFileType = AVFileTypeMPEG4;
+
+      [exportSession exportAsynchronouslyWithCompletionHandler:^{
+          switch ([exportSession status]) {
+              case AVAssetExportSessionStatusFailed:
+                  NSLog(@"Export failed: %@", [[exportSession error] localizedDescription]);
+                  break;
+              case AVAssetExportSessionStatusCancelled:
+                  NSLog(@"Export canceled");
+                  break;
+              default:
+                  NSLog(@"Export OK");
+                  break;
+          }
+
+          UISaveVideoAtPathToSavedPhotosAlbum(videoPath, self, nil, nil);
+
+          [videoInfo setObject:exportSession.outputURL.absoluteString forKey:@"path"];
+          self.videoResolve(videoInfo);
+      }];
+
+      outputFileURL = exportSession.outputURL;
   }
-  else if (self.videoTarget == RCTCameraCaptureTargetDisk) {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *documentsDirectory = [paths firstObject];
-    NSString *fullPath = [[documentsDirectory stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]] stringByAppendingPathExtension:@"mov"];
+  else
+  {
+      NSLog(@"No mp4 export done!!");
 
-    NSFileManager * fileManager = [NSFileManager defaultManager];
-    NSError * error = nil;
+      if (self.videoTarget == RCTCameraCaptureTargetCameraRoll) {
+        ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
+        if ([library videoAtPathIsCompatibleWithSavedPhotosAlbum:outputFileURL]) {
+          [library writeVideoAtPathToSavedPhotosAlbum:outputFileURL
+                                      completionBlock:^(NSURL *assetURL, NSError *error) {
+                                        if (error) {
+                                          self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
+                                          return;
+                                        }
+                                        [videoInfo setObject:[assetURL absoluteString] forKey:@"path"];
+                                        self.videoResolve(videoInfo);
+                                      }];
+        }
+      }
+      else if (self.videoTarget == RCTCameraCaptureTargetDisk) {
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSString *documentsDirectory = [paths firstObject];
+        NSString *fullPath = [[documentsDirectory stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]] stringByAppendingPathExtension:@"mov"];
 
-    //moving to destination
-    if (!([fileManager moveItemAtPath:[outputFileURL path] toPath:fullPath error:&error])) {
-      self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
-      return;
-    }
-    [videoInfo setObject:fullPath forKey:@"path"];
-    self.videoResolve(videoInfo);
-  }
-  else if (self.videoTarget == RCTCameraCaptureTargetTemp) {
-    NSString *fileName = [[NSProcessInfo processInfo] globallyUniqueString];
-    NSString *fullPath = [NSString stringWithFormat:@"%@%@.mov", NSTemporaryDirectory(), fileName];
+        NSFileManager * fileManager = [NSFileManager defaultManager];
+        NSError * error = nil;
 
-    NSFileManager * fileManager = [NSFileManager defaultManager];
-    NSError * error = nil;
+        //moving to destination
+        if (!([fileManager moveItemAtPath:[outputFileURL path] toPath:fullPath error:&error])) {
+          self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
+          return;
+        }
+        [videoInfo setObject:fullPath forKey:@"path"];
+        self.videoResolve(videoInfo);
+      }
+      else if (self.videoTarget == RCTCameraCaptureTargetTemp) {
+        NSString *fileName = [[NSProcessInfo processInfo] globallyUniqueString];
+        NSString *fullPath = [NSString stringWithFormat:@"%@%@.mov", NSTemporaryDirectory(), fileName];
 
-    //moving to destination
-    if (!([fileManager moveItemAtPath:[outputFileURL path] toPath:fullPath error:&error])) {
-        self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
-        return;
-    }
-    [videoInfo setObject:fullPath forKey:@"path"];
-    self.videoResolve(videoInfo);
-  }
-  else {
-    self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Target not supported"));
+        NSFileManager * fileManager = [NSFileManager defaultManager];
+        NSError * error = nil;
+
+        //moving to destination
+        if (!([fileManager moveItemAtPath:[outputFileURL path] toPath:fullPath error:&error])) {
+            self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
+            return;
+        }
+        [videoInfo setObject:fullPath forKey:@"path"];
+        self.videoResolve(videoInfo);
+      }
+      else {
+        self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Target not supported"));
+      }
   }
 }
 
