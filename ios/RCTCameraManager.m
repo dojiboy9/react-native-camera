@@ -800,6 +800,8 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
       NSLog(@"videopath of your mp4 file = %@", videoPath);  // PATH OF YOUR .mp4 FILE
       exportSession.outputFileType = AVFileTypeMPEG4;
 
+      [[NSFileManager defaultManager] removeItemAtURL:exportSession.outputURL error:nil];
+
       [exportSession exportAsynchronouslyWithCompletionHandler:^{
           switch ([exportSession status]) {
               case AVAssetExportSessionStatusFailed:
@@ -814,12 +816,10 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
           }
 
           UISaveVideoAtPathToSavedPhotosAlbum(videoPath, self, nil, nil);
-
-          [videoInfo setObject:exportSession.outputURL.absoluteString forKey:@"path"];
-          self.videoResolve(videoInfo);
       }];
 
-      outputFileURL = exportSession.outputURL;
+      [videoInfo setObject:exportSession.outputURL.absoluteString forKey:@"path"];
+      self.videoResolve(videoInfo);
   }
   else
   {
