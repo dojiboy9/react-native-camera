@@ -816,10 +816,9 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
           }
 
           UISaveVideoAtPathToSavedPhotosAlbum(videoPath, self, nil, nil);
+          [videoInfo setObject:exportSession.outputURL.absoluteString forKey:@"path"];
+          self.videoResolve(videoInfo);
       }];
-
-      [videoInfo setObject:exportSession.outputURL.absoluteString forKey:@"path"];
-      self.videoResolve(videoInfo);
   }
   else
   {
